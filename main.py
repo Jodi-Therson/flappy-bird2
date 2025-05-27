@@ -1,7 +1,25 @@
 import pygame as pg
-from pygame.locals import *
 import random
 from collections import deque
+import pathlib, json, sys, os
+
+def resource_path(rel_path: str) -> str:
+    base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return os.path.join(base_path, rel_path)
+
+APP_DIR  = pathlib.Path(os.getenv("APPDATA", pathlib.Path.home())) / "FlappyBird"
+APP_DIR.mkdir(exist_ok=True)
+
+HS_PATH  = APP_DIR / "highscore.txt"
+
+def load_highscore() -> int:
+    try:
+        return int(HS_PATH.read_text())
+    except (FileNotFoundError, ValueError):
+        return 0
+
+def save_highscore(val: int):
+    HS_PATH.write_text(str(val))
 
 pg.init()
 
@@ -27,15 +45,15 @@ gap = 200
 frequency = 1500
 last_pipe = pg.time.get_ticks() - frequency
 score = 0
-high_score = 0
+high_score = load_highscore()
 pass_pipe = False
 game_over_time = 0
-pipe_queue = deque()  # queue to store pipes
+pipe_queue = deque()  # Initialize
 
 # Load Images
-bg = pg.image.load('img/bg.png')
-ground = pg.image.load('img/ground.png')
-restart_btn = pg.image.load('img/restart.png')
+bg = pg.image.load(resource_path('img/bg.png'))
+ground = pg.image.load(resource_path('img/ground.png'))
+restart_btn = pg.image.load(resource_path('img/restart.png'))
 
 # Draw text with center anchor
 def draw_text(text, font, text_color, x, y):
@@ -56,7 +74,7 @@ def reset_game():
 class Bird(pg.sprite.Sprite):
     def __init__(self, x, y):
         pg.sprite.Sprite.__init__(self)
-        self.images = [pg.image.load(f'img/bird{n}.png') for n in range(1, 4)]
+        self.images = [pg.image.load(resource_path(f'img/bird{n}.png')) for n in range(1, 4)]
         self.index = 0
         self.image = self.images[self.index]
         self.rect = self.image.get_rect(center=(x, y))
@@ -66,8 +84,8 @@ class Bird(pg.sprite.Sprite):
 
     def update(self):
         if flying:
-            self.vel += 0.5
-            self.vel = min(self.vel, 8)
+            self.vel += 0.5 # Gravity
+            self.vel = min(self.vel, 8) # Velocity Limit
             if self.rect.bottom < 768:
                 self.rect.y += int(self.vel)
 
@@ -75,7 +93,7 @@ class Bird(pg.sprite.Sprite):
             keys = pg.key.get_pressed()
             if (pg.mouse.get_pressed()[0] == 1 or keys[pg.K_SPACE]) and not self.clicked:
                 self.clicked = True
-                self.vel = -10
+                self.vel = -10 # Jump
             if pg.mouse.get_pressed()[0] == 0 and not keys[pg.K_SPACE]:
                 self.clicked = False
 
@@ -84,7 +102,7 @@ class Bird(pg.sprite.Sprite):
                 self.counter = 0
                 self.index = (self.index + 1) % len(self.images)
 
-            self.image = pg.transform.rotate(self.images[self.index], self.vel * -2)
+            self.image = pg.transform.rotate(self.images[self.index], self.vel * -2) # Rotate bird
         else:
             self.image = pg.transform.rotate(self.images[self.index], -90)
 
@@ -92,7 +110,7 @@ class Bird(pg.sprite.Sprite):
 class Pipe(pg.sprite.Sprite):
     def __init__(self, x, y, position):
         pg.sprite.Sprite.__init__(self)
-        self.image = pg.image.load('img/pipe.png')
+        self.image = pg.image.load(resource_path('img/pipe.png'))
         self.rect = self.image.get_rect()
         if position == 1:
             self.image = pg.transform.flip(self.image, False, True)
@@ -122,7 +140,7 @@ class Button():
 # Sprite groups
 bird_group = pg.sprite.Group()
 pipe_group = pg.sprite.Group()
-flappy = Bird(100, int(HEIGHT / 2))
+flappy = Bird(100, int(HEIGHT / 2)) # Bird Start Pos
 bird_group.add(flappy)
 
 button = Button(WIDTH // 2 - 50, HEIGHT // 2, restart_btn)
@@ -146,7 +164,7 @@ while run:
             btm_pipe = Pipe(WIDTH, HEIGHT // 2 + pipe_height, -1)
             pipe_group.add(top_pipe)
             pipe_group.add(btm_pipe)
-            pipe_queue.append((top_pipe, btm_pipe))
+            pipe_queue.append((top_pipe, btm_pipe)) # Enqueue
             last_pipe = time_now
 
         # Scroll
@@ -162,11 +180,11 @@ while run:
         if flappy.rect.left > next_top.rect.right:
             score += 1
             pass_pipe = False
-            pipe_queue.popleft()
+            pipe_queue.popleft() # Dequeue
 
     draw_text(str(score), font, WHITE, WIDTH // 2, 50)
 
-    # Collision
+    # Collision Bird and Pipe
     if pg.sprite.groupcollide(bird_group, pipe_group, False, False) or flappy.rect.top < 0:
         if not game_over:
             game_over = True
@@ -174,7 +192,9 @@ while run:
             game_over_time = pg.time.get_ticks()
             if score > high_score:
                 high_score = score
+                save_highscore(high_score)
 
+    # Collision Bird and Ground
     if flappy.rect.bottom >= 768:
         if not game_over:
             game_over = True
@@ -182,6 +202,7 @@ while run:
             game_over_time = pg.time.get_ticks()
             if score > high_score:
                 high_score = score
+                save_highscore(high_score)
 
     # Game Over UI
     if game_over:
@@ -192,6 +213,7 @@ while run:
         draw_text(f"SCORE = {score}", font, WHITE, WIDTH // 2, HEIGHT // 2 - 120)
         draw_text(f"HIGH SCORE = {high_score}", font, WHITE, WIDTH // 2, HEIGHT // 2 - 40)
 
+        # Delay restart button
         if pg.time.get_ticks() - game_over_time > 1000:
             if button.draw():
                 game_over = False
@@ -207,17 +229,17 @@ while run:
     for event in pg.event.get():
         if event.type == pg.QUIT:
             run = False
-        if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
+        if event.type == pg.KEYDOWN and event.key == pg.K_SPACE: # If Spacebar pressed
             if not flying and not game_over:
-                flying = True
-                flappy.vel = -10
-            elif game_over and pg.time.get_ticks() - game_over_time > 1000:
+                flying = True 
+                flappy.vel = -10 # Jump
+            elif game_over and pg.time.get_ticks() - game_over_time > 1000: # Adds delay when game over
                 game_over = False
                 score = reset_game()
-        if event.type == pg.MOUSEBUTTONDOWN:
+        if event.type == pg.MOUSEBUTTONDOWN: # If mouse button clicked
             if not flying and not game_over:
                 flying = True
-                flappy.vel = -10
+                flappy.vel = -10 # Jump
 
     pg.display.update()
 
